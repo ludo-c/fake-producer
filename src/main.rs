@@ -1,20 +1,13 @@
-use event_listener::Event;
-use futures::channel::mpsc;
-use futures::SinkExt;
-use futures::StreamExt;
 use std::error::Error;
-use timer::Timer;
 use zbus::dbus_interface;
 use zbus::ConnectionBuilder;
 use zbus::SignalContext;
 
-struct Greeter {
-    done: Event,
-}
+struct Greeter {}
 
 const BUS_NAME: &str = "ludo_ic.daemon.producer";
 const INTERFACE_NAME: &str = "/ludo_ic/daemon/producer";
-const INTERNAL_TIMER: i64 = 1;
+const INTERNAL_TIMER: u64 = 1;
 
 #[dbus_interface(name = "ludo_ic.daemon.producer")]
 impl Greeter {
@@ -33,40 +26,23 @@ impl Greeter {
 // Although we use `async-std` here, you can use any async runtime of choice.
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let greeter = Greeter {
-        done: event_listener::Event::new(),
-    };
-    let done_listener = greeter.done.listen();
+    let greeter = Greeter {};
     let conn = ConnectionBuilder::session()?
         .name(BUS_NAME)?
         .serve_at(INTERFACE_NAME, greeter)?
         .build()
         .await?;
 
-    let t = Timer::new();
+    let iface = conn
+        .object_server()
+        .interface::<_, Greeter>(INTERFACE_NAME)
+        .await
+        .unwrap();
+    let sc = iface.signal_context();
 
-    let (mut tx, mut rx) = mpsc::unbounded();
-    let _timer_guard =
-        t.schedule_repeating(chrono::Duration::milliseconds(INTERNAL_TIMER), move || {
-            async_std::task::block_on(async {
-                tx.send(1).await.map_err(|e| println!("error: {}", e)).ok();
-            })
-        });
-
-    async_std::task::spawn(async move {
-        let iface = conn
-            .object_server()
-            .interface::<_, Greeter>(INTERFACE_NAME)
-            .await
-            .unwrap();
-        let sc = iface.signal_context();
-        while let Some(_) = rx.next().await {
-            //println!("unblocked !");
-            Greeter::MySignalEvent(sc, 1, 43).await.unwrap();
-        }
-    });
-
-    done_listener.wait();
-
-    Ok(())
+    loop {
+        async_std::task::sleep(std::time::Duration::from_millis(INTERNAL_TIMER)).await;
+        //println!("unblocked !");
+        Greeter::MySignalEvent(sc, 1, 43).await.unwrap();
+    }
 }
