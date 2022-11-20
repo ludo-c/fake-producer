@@ -1,7 +1,7 @@
 use std::error::Error;
 use zbus::dbus_interface;
-use zbus::ConnectionBuilder;
 use zbus::SignalContext;
+use zbus::{ConnectionBuilder, InterfaceRef};
 
 struct Greeter {}
 
@@ -33,9 +33,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let iface = conn
+    let iface: InterfaceRef<Greeter> = conn
         .object_server()
-        .interface::<_, Greeter>(INTERFACE_NAME)
+        .interface(INTERFACE_NAME)
         .await
         .unwrap();
     let sc = iface.signal_context();
